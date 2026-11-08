@@ -1,141 +1,239 @@
 package sgapatitas;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Scanner;
-import java.util.InputMismatchException;
 
 public class Main {
+    private static final Scanner entrada = new Scanner(System.in);
+
+    private final GestorAnimal gestorAnimal = new GestorAnimal();
+    private final GestorAdoptante gestorAdoptante = new GestorAdoptante();
+    private final GestorSolicitudAdopcion gestorSolicitud = new GestorSolicitudAdopcion();
+
+    private int idUsuario;
+    private String rolUsuario;
 
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-        GestorAnimal gestorAnimal = new GestorAnimal();
-        GestorAdoptante gestorAdoptante = new GestorAdoptante();
-        GestorSolicitudAdopcion gestorSolicitud = new GestorSolicitudAdopcion();
+        Main programa = new Main();
+        if (programa.iniciarSesion()) {
+            programa.mostrarMenu();
+        }
+        System.out.println("Programa finalizado.");
+    }
 
-        int opcion = 0;
+    private boolean iniciarSesion() {
+        System.out.println("       SISTEMA DE GESTION DE ADOPCION");
+        System.out.println("           INICIAR SESION");
 
+        for (int intento = 1; intento <= 3; intento++) {
+            System.out.print("Usuario: ");
+            String usuario = entrada.nextLine().trim();
+            System.out.print("Contraseña: ");
+            String clave = entrada.nextLine();
+
+            String sql = "SELECT id_usuario, nombre, rol FROM usuario WHERE usuario = ? AND clave = ?";
+            try (Connection con = Conexion.getConexion();
+                 PreparedStatement ps = con.prepareStatement(sql)) {
+                ps.setString(1, usuario);
+                ps.setString(2, clave);
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        idUsuario = rs.getInt("id_usuario");
+                        String nombreUsuario = rs.getString("nombre");
+                        rolUsuario = rs.getString("rol");
+                        System.out.println("\nBienvenido/a, " + nombreUsuario + " (" + rolUsuario + ")");
+                        return true;
+                    }
+                }
+                System.out.println("Usuario o contrasena incorrectos. Intento " + intento + " de 3.\n");
+            } catch (SQLException e) {
+                System.out.println("No se pudo iniciar sesion. Revise MySQL y la conexion.");
+                System.out.println("Detalle: " + e.getMessage());
+                return false;
+            }
+        }
+        System.out.println("Se alcanzó el limite de intentos.");
+        return false;
+    }
+
+    private void mostrarMenu() {
+        int opcion;
         do {
-            System.out.println("\n---- SISTEMA DE GESTION PATITAS ----");
-            System.out.println("1. Registrar un animal");
+            System.out.println("\n---------- SISTEMA DE GESTION PATITAS----------");
+            System.out.println("1. Registrar animal");
             System.out.println("2. Registrar nueva solicitud de adopcion");
-            System.out.println("3. Mostrar todos los animales y/o cambiar disponibilidad");
-            System.out.println("4. Salir");
-            System.out.print("Elija una opcion: ");
+            System.out.println("3. Mostrar todos los animales y/o cambiar estado");
+            System.out.println("4. Cerrar sesion y salir");
+            System.out.println("------------------------------------------------");
+            opcion = leerEntero("Seleccione una opcion: ");
 
-            try {
-                if (scanner.hasNextInt()) {
-                    opcion = scanner.nextInt();
-                } else {
-                    System.out.println("Error: Debe ingresar un numero valido.");
-                    scanner.next();
-                    opcion = 0;
-                    continue;
-                }
-                scanner.nextLine();
+            switch (opcion) {
+                case 1:
+                    registrarAnimal();
+                    break;
+                case 2:
+                    registrarSolicitud();
+                    break;
+                case 3:
+                    consultarAnimales();
+                    break;
+                case 4:
+                    System.out.println("Sesion cerrada.");
+                    break;
+                default:
+                    System.out.println("Opcion incorrecta. Intente nuevamente.");
+            }
+        } while (opcion != 4);
+    }
 
-                switch (opcion) {
-                    case 1:
-                        System.out.print("Especie (perro/gato): ");
-                        String especie = scanner.nextLine().trim().toLowerCase();
+    private void registrarAnimal() {
+        String[] especies = {"perro", "gato"};
+        String[] sexos = {"macho", "hembra"};
 
-                        System.out.print("Edad aproximada: ");
-                        int edad = scanner.nextInt();
-                        scanner.nextLine();
+        System.out.println("\n--- REGISTRAR ANIMAL ---");
+        System.out.println("1. Perro");
+        System.out.println("2. Gato");
+        int opcionEspecie = leerEntero("Seleccione la especie: ");
 
-                        System.out.print("Sexo: ");
-                        String sexo = scanner.nextLine();
+        int edad = leerEntero("Edad (aprox): ");
+        if (edad < 0) {
+            System.out.println("La edad ingresada no corresponde");
+            return;
+        }
 
-                        System.out.print("Descripción y/o raza: ");
-                        String descripcion = scanner.nextLine();
+        System.out.println("1. Macho");
+        System.out.println("2. Hembra");
+        int opcionSexo = leerEntero("Seleccione el sexo: ");
+        if (opcionSexo < 1 || opcionSexo > sexos.length) {
+            System.out.println("Sexo no valido");
+            return;
+        }
 
-                        Animal nuevoAnimal;
-                        if (especie.equals("gato")) {
-                            nuevoAnimal = new Animal.Gato(edad, sexo, descripcion);
-                        } else {
-                            nuevoAnimal = new Animal.Perro(edad, sexo, descripcion);
-                        }
+        System.out.print("Descripcion o raza: ");
+        String descripcion = entrada.nextLine().trim();
+        if (descripcion.isEmpty()) {
+            System.out.println("Porfavor añada una descripcion");
+            return;
+        }
 
-                        gestorAnimal.guardar(nuevoAnimal);
-                        System.out.println("Animal registrado con éxito en la base de datos");
-                        break;
+        Animal animal;
+        if ("gato".equals(especies[opcionEspecie - 1])) {
+            animal = new Animal.Gato(edad, sexos[opcionSexo - 1], descripcion);
+        } else {
+            animal = new Animal.Perro(edad, sexos[opcionSexo - 1], descripcion);
+        }
 
-                    case 2:
-                        System.out.println("\n--- ANIMALES DISPONIBLES PARA ADOPCION ---");
-                        List<Animal> disponibles = gestorAnimal.listarDisponibles();
-                        if (disponibles.isEmpty()) {
-                            System.out.println("No hay animales disponibles en este momento.");
-                            break;
-                        }
-                        for (Animal a : disponibles) {
-                            a.mostrarFicha();
-                        }
+        try {
+            gestorAnimal.guardar(animal);
+            System.out.println("Animal registrado correctamente");
+        } catch (SQLException e) {
+            System.out.println("No se pudo registrar el animal: " + e.getMessage());
+        }
+    }
 
-                        System.out.print("\nIngrese el ID del animal elegido por el adoptante: ");
-                        int idAnimalElegido = scanner.nextInt();
-                        scanner.nextLine();
-
-                        System.out.println("\n--- DATOS DEL ADOPTANTE ---");
-                        System.out.print("Nombre: ");
-                        String nombre = scanner.nextLine();
-                        System.out.print("Apellido: ");
-                        String apellido = scanner.nextLine();
-                        System.out.print("DNI: ");
-                        String dni = scanner.nextLine();
-                        System.out.print("Telefono: ");
-                        String telefono = scanner.nextLine();
-                        System.out.print("Formulario de idoneidad (observaciones): ");
-                        String formularioIdoneidad = scanner.nextLine();
-
-                        int idAdoptante = gestorAdoptante.registrarAdoptante(nombre, apellido, dni, telefono, formularioIdoneidad);
-                        if (idAdoptante != -1) {
-                            int idUsuarioSistemaFijo = 1;
-                            int idSolicitud = gestorSolicitud.registrarSolicitud(idAnimalElegido, idAdoptante, idUsuarioSistemaFijo);
-                            if (idSolicitud != -1) {
-                                System.out.println("Solicitud registrada con éxito. ID de solicitud: " + idSolicitud);
-                            }
-                        }
-                        break;
-
-                    case 3:
-                        System.out.println("\n--- LISTA DE TODOS LOS ANIMALES ---");
-                        List<Animal> todos = gestorAnimal.listarTodos();
-                        if (todos.isEmpty()) {
-                            System.out.println("No hay animales registrados en la base de datos.");
-                            break;
-                        }
-                        for (Animal a : todos) {
-                            a.mostrarFicha();
-                        }
-
-                        System.out.print("\nCambiar la disponibilidad de algun animal? (s/n): ");
-                        String respuesta = scanner.nextLine();
-                        if (respuesta.equalsIgnoreCase("s")) {
-                            System.out.print("Ingrese el ID del animal: ");
-                            int idMod = scanner.nextInt();
-                            scanner.nextLine();
-                            System.out.print("Ingrese el nuevo estado (ej: disponible, en evaluacion, adoptado): ");
-                            String nuevoEstado = scanner.nextLine();
-                            gestorAnimal.cambiarEstado(idMod, nuevoEstado);
-                        }
-                        break;
-
-                    case 4:
-                        System.out.println("Saliendo...");
-                        break;
-
-                    default:
-                        System.out.println("Opción no válida. Intente nuevamente.");
-                }
-
-            } catch (InputMismatchException e) {
-                System.out.println("Error: Tipo de dato ingresado no válido. Intente nuevamente.");
-                scanner.nextLine();
-            } catch (Exception e) {
-                System.out.println("Ocurrió un error inesperado: " + e.getMessage());
+    private void consultarAnimales() {
+        try {
+            List<Animal> animales = gestorAnimal.listarTodos();
+            if (animales.isEmpty()) {
+                System.out.println("No hay animales registrados.");
+                return;
             }
 
-        } while (opcion != 4);
+            System.out.println("\n--- ANIMALES REGISTRADOS ---");
+            for (Animal animal : animales) {
+                animal.mostrarFicha();
+            }
 
-        scanner.close();
+            System.out.print("\nDesea cambiar el estado de un animal? (s/n): ");
+            String respuesta = entrada.nextLine().trim();
+            if (!respuesta.equalsIgnoreCase("s")) return;
+
+            int id = leerEntero("Ingrese el ID del animal: ");
+            String[] estados = {"En evaluacion", "Disponible", "En proceso", "Adoptado"};
+            System.out.println("Estados posibles:");
+            for (int i = 0; i < estados.length; i++) {
+                System.out.println((i + 1) + ". " + estados[i]);
+            }
+            int opcionEstado = leerEntero("Seleccione el nuevo estado: ");
+
+            String nuevoEstado = estados[opcionEstado - 1];
+            if (nuevoEstado.equals("disponible") && !"veterinario".equalsIgnoreCase(rolUsuario)) {
+                System.out.println("Solo un usuario con rol veterinario puede marcar un animal como disponible");
+                return;
+            }
+
+            gestorAnimal.cambiarEstado(id, nuevoEstado);
+            System.out.println("Estado actualizado correctamente.");
+        } catch (SQLException e) {
+            System.out.println("No se pudo consultar o actualizar el animal: " + e.getMessage());
+        }
+    }
+
+    private void registrarSolicitud() {
+        try {
+            List<Animal> disponibles = gestorAnimal.listarDisponibles();
+            if (disponibles.isEmpty()) {
+                System.out.println("No hay animales disponibles para adopcion.");
+                return;
+            }
+
+            System.out.println("\n--- ANIMALES DISPONIBLES ---");
+            for (Animal animal : disponibles) {
+                animal.mostrarFicha();
+            }
+
+            int idAnimal = leerEntero("Ingrese el ID del animal elegido: ");
+            boolean encontrado = false;
+            for (Animal animal : disponibles) {
+                if (animal.getIdAnimal() == idAnimal) {
+                    encontrado = true;
+                    break;
+                }
+            }
+            if (!encontrado) {
+                System.out.println("El ID no corresponde a un animal disponible.");
+                return;
+            }
+
+            System.out.println("\n--- DATOS DEL ADOPTANTE ---");
+            System.out.print("Nombre: ");
+            String nombre = entrada.nextLine().trim();
+            System.out.print("Apellido: ");
+            String apellido = entrada.nextLine().trim();
+            System.out.print("DNI: ");
+            String dni = entrada.nextLine().trim();
+            System.out.print("Telefono: ");
+            String telefono = entrada.nextLine().trim();
+            System.out.print("Observaciones: ");
+            String observaciones = entrada.nextLine().trim();
+
+            if (nombre.isEmpty() || apellido.isEmpty() || dni.isEmpty()) {
+                System.out.println("Nombre, apellido y DNI son requeridos");
+                return;
+            }
+
+            int idAdoptante = gestorAdoptante.registrarAdoptante(nombre, apellido, dni, telefono, observaciones);
+            int idSolicitud = gestorSolicitud.registrarSolicitud(idAnimal, idAdoptante, idUsuario);
+            System.out.println("Solicitud registrada correctamente con Numero: " + idSolicitud);
+        } catch (SQLException e) {
+            System.out.println("No se pudo registrar la solicitud: " + e.getMessage());
+        }
+    }
+
+    private int leerEntero(String mensaje) {
+        while (true) {
+            System.out.print(mensaje);
+            String valor = entrada.nextLine().trim();
+            try {
+                return Integer.parseInt(valor);
+            } catch (NumberFormatException e) {
+                System.out.println("Debe ingresar un numero entero");
+            }
+        }
     }
 }
